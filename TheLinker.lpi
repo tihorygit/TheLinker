@@ -100,7 +100,11 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
-        <Filename Value="Objects.pas"/>
+        <Filename Value="Linker.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="COFF64.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
     </Units>
