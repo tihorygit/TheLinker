@@ -297,6 +297,13 @@ begin
   begin
     FStream.Read(FInternalSection, IMAGE_SIZEOF_SECTION_HEADER);
     FName := StrPas(Pchar(@FInternalSection.Name[0]));
+    if FName[1] = '/' then
+    begin
+      if FName[2] = '/' then
+        raise Exception.Create('Section with base64 name is not implemented yet');
+      P := StrToInt64(Copy(FName, 2, 8));
+      FName := GetString(P);
+    end;
     FDataSize := FInternalSection.SizeOfRawData;
     FFlags := [];
     if (FInternalSection.Characteristics and IMAGE_SCN_CNT_CODE) <> 0 then
@@ -362,8 +369,6 @@ begin
 end;
 
 procedure TCOFF64Object.AddRelocation(ASection: TCOFF64Section; ARelocation: TCOFF64Relocation);
-var
-  P: Int64;
 begin
   with ARelocation do
   begin
