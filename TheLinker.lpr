@@ -19,6 +19,8 @@ begin
   for I := 0 to Coff.SectionCount - 1 do
     WriteLn(I, ' - ', Coff.Section[I].Name);
 
+  WriteLn();
+
   WriteLn('Symbol Count : ', Coff.SymbolCount);
   for I := 0 to Coff.SymbolCount - 1 do
     WriteLn(I, ' - ', Coff.Symbol[I].Name);
