@@ -139,14 +139,13 @@ type
   private
     FOwner: TLinker;
     FName: String;
-    FSize: QWord;
-    FCapacity: QWord;
     FObjectSections: TObjectList;
-
+    FStartLocation: QWord;
     function GetObjectSection(Index: QWord): TLinkerObjectSection;
     function GetObjectSectionCount: QWord;
+    function GetSize: QWord;
   public
-    constructor Create(AOwner: TLinker; ACapacity: QWord; AName: String);
+    constructor Create(AOwner: TLinker; AName: String);
     destructor Destroy; override;
 
     procedure AddObjectSection(AObjectSection: TLinkerObjectSection);
@@ -157,7 +156,7 @@ type
 
     property ObjectSectionCount: QWord read GetObjectSectionCount;
     property ObjectSection[Index: QWord]: TLinkerObjectSection read GetObjectSection;
-    property Size: QWord read FSize;
+    property Size: QWord read GetSize;
 
   end;
 
@@ -315,11 +314,16 @@ begin
   Result := FObjectSections.Count;
 end;
 
-constructor TLinkerSection.Create(AOwner: TLinker; ACapacity: QWord; AName: String);
+function TLinkerSection.GetSize: QWord;
+begin
+  Result := FOwner.CurrentLocation - FStartLocation;
+end;
+
+constructor TLinkerSection.Create(AOwner: TLinker; AName: String);
 begin
   FOwner := AOwner;
   FObjectSections := TObjectList.Create(False);
-  FCapacity := ACapacity;
+  FStartLocation := AOwner.CurrentLocation;
   FName := AName;
 end;
 
@@ -334,21 +338,20 @@ begin
   FObjectSections.Add(AObjectSection);
   AObjectSection.LinkerSectionData := Pointer(FOwner.CurrentLocation);
   AObjectSection.LinkerSection := Self;
-  while Size + AObjectSection.Size > FCapacity do
+  while AObjectSection.Size > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated do
   begin
     FOwner.FMemoryManager.ExpandMemory(1);
-    FCapacity += FOwner.FMemoryManager.PageSize;
   end;
-  CopyMemory(Pointer(FOwner.CurrentLocation), AObjectSection.Data, AObjectSection.Size);
+  if AObjectSection.Data <> nil then
+    CopyMemory(Pointer(FOwner.CurrentLocation), AObjectSection.Data, AObjectSection.Size);
   FOwner.CurrentLocation := FOwner.CurrentLocation + AObjectSection.Size;
 end;
 
 procedure TLinkerSection.WriteByte(AValue: Byte);
 begin
-  if Size + 1 > FCapacity then
+  if 1 > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated then
   begin
     FOwner.FMemoryManager.ExpandMemory(1);
-    FCapacity += FOwner.FMemoryManager.PageSize;
   end;
   Pbyte(FOwner.CurrentLocation)^ := AValue;
   FOwner.CurrentLocation := FOwner.CurrentLocation + 1;
@@ -356,10 +359,9 @@ end;
 
 procedure TLinkerSection.WriteWord(AValue: Word);
 begin
-  if Size + 2 > FCapacity then
+  if 2 > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated then
   begin
     FOwner.FMemoryManager.ExpandMemory(1);
-    FCapacity += FOwner.FMemoryManager.PageSize;
   end;
   PWord(FOwner.CurrentLocation)^ := AValue;
   FOwner.CurrentLocation := FOwner.CurrentLocation + 2;
@@ -367,10 +369,9 @@ end;
 
 procedure TLinkerSection.WriteDWord(AValue: DWord);
 begin
-  if Size + 4 > FCapacity then
+  if 4 > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated then
   begin
     FOwner.FMemoryManager.ExpandMemory(1);
-    FCapacity += FOwner.FMemoryManager.PageSize;
   end;
   PDWORD(FOwner.CurrentLocation)^ := AValue;
   FOwner.CurrentLocation := FOwner.CurrentLocation + 4;
@@ -378,10 +379,9 @@ end;
 
 procedure TLinkerSection.WriteQWord(AValue: QWord);
 begin
-  if Size + 8 > FCapacity then
+  if 8 > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated then
   begin
     FOwner.FMemoryManager.ExpandMemory(1);
-    FCapacity += FOwner.FMemoryManager.PageSize;
   end;
   PQWord(FOwner.CurrentLocation)^ := AValue;
   FOwner.CurrentLocation := FOwner.CurrentLocation + 8;
@@ -575,17 +575,20 @@ begin
   begin
     with TLinkerObject(FObjects[I]) do
       for J := 0 to SymbolCount - 1 do
+      begin
+        if Symbol[J].IsUndefined then Continue;
         if Symbol[J].Name = AName then
         begin
           Result := Symbol[J];
           Exit;
         end;
+      end;
   end;
   for I := 0 to FSymbols.Count - 1 do
   begin
-    if TLinkerObjectSymbol(FSymbols[J]).Name = AName then
+    if TLinkerObjectSymbol(FSymbols[I]).Name = AName then
     begin
-      Result := TLinkerObjectSymbol(FSymbols[J]);
+      Result := TLinkerObjectSymbol(FSymbols[I]);
       Exit;
     end;
   end;
@@ -613,7 +616,7 @@ end;
 procedure TLinker.NewSection(AName: String);
 begin
   //Todo: Check douplicated section name
-  FCurrentSection := TLinkerSection.Create(Self, FMemoryManager.Allocated - (FCurrentLocation - QWord(FMemoryManager.Mem)), AName);
+  FCurrentSection := TLinkerSection.Create(Self, AName);
   FSections.Add(FCurrentSection);
 end;
 
@@ -671,6 +674,7 @@ begin
   o := VirtualAlloc(FMem + FAllocated, APageCount * FPageSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
   if (o = nil) then
     raise Exception.Create('Memory allocation failed.');
+  FAllocated += FPageSize;
 end;
 
 end.
