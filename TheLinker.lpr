@@ -13,8 +13,10 @@ var
   L: TLinker;
   O: TLinkerObject;
   S: TLinkerObjectSection;
+  T: QWord;
 begin
   SecAlign := 64;
+  T := GetTickCount64;
   L := TLinker.Create;
   with L do
   begin
@@ -42,7 +44,9 @@ begin
         Link(O.FileName, '.text');
         Link(O.FileName, '.stub');
         for S in O.Find('.text.*') do
+        begin
           Link(O.FileName, S.Name);
+        end;
         for S in O.Find('.gnu.linkonce.t.*') do
           Link(O.FileName, S.Name);
       end;
@@ -66,8 +70,8 @@ begin
       CurrentLocation := Align(8);
       AddSymbol(TLinkerSymbol.Create('___CTOR_LIST__', CurrentLocation));
       AddSymbol(TLinkerSymbol.Create('__CTOR_LIST__', CurrentLocation));
-      WriteDWord(-1);
-      WriteDWord(-1);
+      WriteDWord($FFFFFFFF);
+      WriteDWord($FFFFFFFF);
       for I := 0 to ObjectCount - 1 do
       begin
         O := &Object[I];
@@ -89,8 +93,8 @@ begin
       WriteDWord(0);
       AddSymbol(TLinkerSymbol.Create('___DTOR_LIST__', CurrentLocation));
       AddSymbol(TLinkerSymbol.Create('__DTOR_LIST__', CurrentLocation));
-      WriteDWord(-1);
-      WriteDWord(-1);
+      WriteDWord($FFFFFFFF);
+      WriteDWord($FFFFFFFF);
       for I := 0 to ObjectCount - 1 do
       begin
         O := &Object[I];
@@ -380,5 +384,6 @@ begin
       end;
     end;
   end;
+  WriteLn(GetTickCount64 - T);
   ReadLn;
 end.
