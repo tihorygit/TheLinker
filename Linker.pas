@@ -317,6 +317,7 @@ end;
 
 constructor TLinkerSection.Create(AOwner: TLinker; ACapacity: QWord; AName: String);
 begin
+  FOwner := AOwner;
   FObjectSections := TObjectList.Create(False);
   FCapacity := ACapacity;
   FName := AName;
@@ -449,6 +450,7 @@ begin
         Result := True;
         Break;
       end;
+      Inc(FCurrentIndex);
     end
   else
     while FCurrentIndex < FOwner.SectionCount do
@@ -458,6 +460,7 @@ begin
         Result := True;
         Break;
       end;
+      Inc(FCurrentIndex);
     end;
 end;
 
@@ -481,6 +484,8 @@ end;
 
 constructor TLinker.Create;
 begin
+  FMemoryManager := TLinkerMemoryManager.Create(10000);
+  FMemoryManager.ExpandMemory(1);
   FSearchDirectories := TStringList.Create;
   FInputs := TStringList.Create;
   FGroups := TStringList.Create;
@@ -488,6 +493,7 @@ begin
   FObjects := TObjectList.Create(True);
   FSymbols := TObjectList.Create(False);
   FSections := TObjectList.Create(True);
+  FCurrentLocation := QWord(FMemoryManager.Mem);
 end;
 
 destructor TLinker.Destroy;
@@ -504,6 +510,7 @@ begin
       FSymbols[I].Free;
   FSymbols.Free;
   FSections.Free;
+  FMemoryManager.Free;
   inherited Destroy;
 end;
 
