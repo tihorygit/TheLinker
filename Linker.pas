@@ -68,9 +68,11 @@ type
     function GetSymbol: TLinkerObjectSymbol; virtual; abstract;
     function GetVirtualAddress: QWord; virtual; abstract;
     procedure SetVirtualAddress(AValue: QWord); virtual; abstract;
+    function GetSection: TLinkerObjectSection; virtual; abstract;
   public
     property Symbol: TLinkerObjectSymbol read GetSymbol;
     property VirtualAddress: QWord read GetVirtualAddress write SetVirtualAddress;
+    property Section: TLinkerObjectSection read GetSection;
   end;
 
   { TLinkerObjectSection }
@@ -87,6 +89,11 @@ type
     function GetSymbolCount: QWord; virtual; abstract;
     function GetData: Pbyte; virtual; abstract;
     function GetSize: QWord; virtual; abstract;
+    function GetIsCode: Boolean; virtual; abstract;
+    function GetIsDicardable: Boolean; virtual; abstract;
+    function GetIsIntializedData: Boolean; virtual; abstract;
+    function GetIsUninitalizedData: Boolean; virtual; abstract;
+    function GetIsWritable: Boolean; virtual; abstract;
   public
     property Name: String read GetName;
     property Relocation[Index: QWord]: TLinkerObjectRelocation read GetRelocation;
@@ -97,6 +104,11 @@ type
     property LinkerSectionData: Pointer read FLinkerSectionData write FLinkerSectionData;
     property Data: Pbyte read GetData;
     property Size: QWord read GetSize;
+    property IsDicardable: Boolean read GetIsDicardable;
+    property IsIntializedData: Boolean read GetIsIntializedData;
+    property IsUninitalizedData: Boolean read GetIsUninitalizedData;
+    property IsCode: Boolean read GetIsCode;
+    property IsWritable: Boolean read GetIsWritable;
   end;
 
   { TLinkerObjectSectionEnumerator }
@@ -123,6 +135,7 @@ type
     function GetSectionCount: QWord; virtual; abstract;
     function GetSymbol(Index: QWord): TLinkerObjectSymbol; virtual; abstract;
     function GetSymbolCount: QWord; virtual; abstract;
+    function GetImageBase: QWord; virtual; abstract;
   public
     function Find(AQuery: String): TLinkerObjectSectionEnumerator;
     property FileName: String read GetFileName;
@@ -131,6 +144,7 @@ type
     property SectionByName[Name: String]: TLinkerObjectSection read GetSectionByName;
     property Symbol[Index: QWord]: TLinkerObjectSymbol read GetSymbol;
     property SymbolCount: QWord read GetSymbolCount;
+    property ImageBase: QWord read GetImageBase;
   end;
 
   { TLinkerSection }
@@ -191,7 +205,7 @@ type
     FSearchDirectories: TStringList;
     FInputs: TStringList;
     FGroups: TStringList;
-    FDLLs: TStringList;
+    FDLLs: TList;
 
     FObjects: TObjectList;
 
@@ -202,7 +216,7 @@ type
     function GetObject(Index: Integer): TLinkerObject;
     function GetObjectCount: QWord;
     procedure SetCurrentLocation(AValue: QWord);
-
+    procedure ResolveRelocation(AObject: TLinkerObject; ARelocation: TLinkerObjectRelocation);
   public
 
     constructor Create;
@@ -211,7 +225,7 @@ type
     procedure AddSearchDirectory(APath: String);
     procedure AddInput(APath: String);
     procedure AddGroup(APath: String);
-    procedure AddDLL(APath: String);
+    procedure AddDLL(APath: String; AMangle: String);
 
     function Align(AAlignment: DWord): QWord;
 
@@ -420,7 +434,7 @@ constructor TLinkerObjectSectionEnumerator.Create(AOwner: TLinkerObject; AQuery:
 begin
   FOwner := AOwner;
   FQuery := AQuery;
-  FCurrentIndex := -1;
+  FCurrentIndex := QWord(-1);
 end;
 
 function TLinkerObjectSectionEnumerator.GetEnumerator: TLinkerObjectSectionEnumerator;
@@ -472,6 +486,52 @@ begin
   FCurrentLocation := AValue;
 end;
 
+procedure TLinker.ResolveRelocation(AObject: TLinkerObject; ARelocation: TLinkerObjectRelocation);
+var
+  RS: TLinkerObjectSection;
+  Sym: TLinkerObjectSymbol;
+  R: TCOFF64Relocation;
+  RelAddr, SymAddr: QWord;
+begin
+  R := ARelocation as TCOFF64Relocation;
+  RS := ARelocation.Section;
+  if RS.IsDicardable then
+    Exit;
+  Sym := R.Symbol;
+  if Sym.IsUndefined then
+    Sym := FindSymbol(Sym.Name);
+  if Sym = nil then
+  begin
+    WriteLn(R.Symbol.Name);
+    //raise Exception.Create('Undifined symbol : ' + R.Symbol.Name);
+    Exit;
+  end;
+  if Sym.IsAbsolute then
+    Exit; //Not supported yet
+  if Sym.IsDebug then
+    Exit; //Not supported yet
+
+  RelAddr := QWord(R.Section.FLinkerSectionData) + R.VirtualAddress;
+  if Sym.Section <> nil then
+    SymAddr := Sym.Value + QWord(Sym.Section.FLinkerSectionData)
+  else
+    SymAddr := Sym.Value; // Fake Symbol
+
+  case R.Flag of
+    rfAddr64: PQWord(RelAddr)^ := QWord(SymAddr);
+    rfAddr32NB: PQWord(RelAddr)^ := QWord(SymAddr - AObject.ImageBase - QWord(FMemoryManager.Mem));
+    rfRel32: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 4);
+    rfRel32_1: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 5);
+    rfRel32_2: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 6);
+    rfRel32_3: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 7);
+    rfRel32_4: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 8);
+    rfRel32_5: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 9);
+    else
+      raise Exception.Create('Not supported relocation');
+  end;
+
+end;
+
 function TLinker.GetObject(Index: Integer): TLinkerObject;
 begin
   Result := FObjects[Index] as TLinkerObject;
@@ -489,7 +549,7 @@ begin
   FSearchDirectories := TStringList.Create;
   FInputs := TStringList.Create;
   FGroups := TStringList.Create;
-  FDLLs := TStringList.Create;
+  FDLLs := TList.Create;
   FObjects := TObjectList.Create(True);
   FSymbols := TObjectList.Create(False);
   FSections := TObjectList.Create(True);
@@ -530,9 +590,10 @@ begin
   FGroups.Add(APath);
 end;
 
-procedure TLinker.AddDLL(APath: String);
+procedure TLinker.AddDLL(APath: String; AMangle: String);
 begin
-  FDLLs.Add(APath);
+  //FDLLs.Add(APath);
+
 end;
 
 function TLinker.Align(AAlignment: DWord): QWord;
@@ -615,7 +676,7 @@ end;
 
 procedure TLinker.NewSection(AName: String);
 begin
-  //Todo: Check douplicated section name
+  //Todo: Check duplicated section name
   FCurrentSection := TLinkerSection.Create(Self, AName);
   FSections.Add(FCurrentSection);
 end;
@@ -631,13 +692,25 @@ begin
       begin
         S := SectionByName[ASectionName];
         if S <> nil then
+        begin
+          //WriteLn(S.Name, '  ', QWord(S.Data));
           FCurrentSection.AddObjectSection(S);
+        end;
       end;
 end;
 
 procedure TLinker.MakeExecutable;
+var
+  I, J, K: Integer;
 begin
-
+  for I := 0 to FObjects.Count - 1 do
+  begin
+    with TLinkerObject(FObjects[I]) do
+      for J := 0 to SectionCount - 1 do
+        with Section[J] do
+          for K := 0 to RelocationCount - 1 do
+            ResolveRelocation(Relocation[K]);
+  end;
 end;
 
 procedure TLinker.Execute;
