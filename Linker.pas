@@ -237,6 +237,7 @@ type
     function FindSymbol(AName: String): TLinkerObjectSymbol;
     procedure NewSymbol(AName: String; AValue: QWord);
     procedure AddSymbol(ASymbol: TLinkerObjectSymbol);
+    procedure AddFakeCallSymbol(AName: String; AAddress: Pointer);
     procedure ProvideSymbol(AName: String; AValue: QWord);
 
     procedure NewSection(AName: String);
@@ -256,7 +257,7 @@ type
 
 implementation
 
-uses COFF64;
+uses COFF64, DLLParser;
 
 { TLinkerSymbol }
 
@@ -350,6 +351,7 @@ end;
 procedure TLinkerSection.AddObjectSection(AObjectSection: TLinkerObjectSection);
 begin
   FObjectSections.Add(AObjectSection);
+  WriteLn(AObjectSection.Name, ' ', FOwner.CurrentLocation);
   AObjectSection.LinkerSectionData := Pointer(FOwner.CurrentLocation);
   AObjectSection.LinkerSection := Self;
   while AObjectSection.Size > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated do
@@ -511,13 +513,16 @@ begin
   if Sym.IsDebug then
     Exit; //Not supported yet
 
-  RelAddr := QWord(R.Section.FLinkerSectionData) + R.VirtualAddress;
+  RelAddr := QWord(R.Section.LinkerSectionData) + R.VirtualAddress;
+  WriteLn(QWord(R.Section.LinkerSectionData));
+  Writeln(R.Section.Name);
   if Sym.Section <> nil then
-    SymAddr := Sym.Value + QWord(Sym.Section.FLinkerSectionData)
+    SymAddr := Sym.Value + QWord(Sym.Section.LinkerSectionData)
   else
     SymAddr := Sym.Value; // Fake Symbol
 
   case R.Flag of
+    rfAbsolute: ;
     rfAddr64: PQWord(RelAddr)^ := QWord(SymAddr);
     rfAddr32NB: PQWord(RelAddr)^ := QWord(SymAddr - AObject.ImageBase - QWord(FMemoryManager.Mem));
     rfRel32: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 4);
@@ -563,6 +568,8 @@ begin
   FSearchDirectories.Free;
   FInputs.Free;
   FGroups.Free;
+  for I := 0 to FDLLs.Count - 1 do
+    UnloadLibrary(QWord(FDLLs[I]));
   FDLLs.Free;
   FObjects.Free;
   for I := 0 to FSymbols.Count - 1 do
@@ -591,9 +598,24 @@ begin
 end;
 
 procedure TLinker.AddDLL(APath: String; AMangle: String);
+var
+  SL: TStringList;
+  Lib: TLibHandle;
+  P: Pointer;
+  I: Integer;
 begin
   //FDLLs.Add(APath);
-
+  SL := TStringList.Create;
+  ExtractDLLFunctions(APath, SL);
+  Lib := System.LoadLibrary(APath);
+  if Lib = 0 then
+    raise Exception.Create('Can''t load dll');
+  FDLLs.Add(Pointer(Lib));
+  for I := 0 to SL.Count - 1 do
+  begin
+    P := System.GetProcAddress(Lib, SL[I]);
+    AddFakeCallSymbol(AMangle + SL[I], P);
+  end;
 end;
 
 function TLinker.Align(AAlignment: DWord): QWord;
@@ -667,6 +689,22 @@ begin
   FSymbols.Add(ASymbol);
 end;
 
+procedure TLinker.AddFakeCallSymbol(AName: String; AAddress: Pointer);
+var
+  Mem: Pbyte;
+begin
+  if FCurrentLocation - QWord(FMemoryManager.Mem) + 12 > FMemoryManager.Allocated then
+    FMemoryManager.ExpandMemory(1);
+  Mem := Pbyte(FCurrentLocation);
+  Mem[0] := 72;
+  Mem[1] := 184;
+  PQWord(@Mem[2])^ := QWord(AAddress);
+  Mem[10] := 255;
+  Mem[11] := 224;
+  FCurrentLocation += 12;
+  NewSymbol(AName, QWord(Mem));
+end;
+
 procedure TLinker.ProvideSymbol(AName: String; AValue: QWord);
 begin
   if FindSymbol(AName) <> nil then
@@ -692,30 +730,43 @@ begin
       begin
         S := SectionByName[ASectionName];
         if S <> nil then
-        begin
-          //WriteLn(S.Name, '  ', QWord(S.Data));
           FCurrentSection.AddObjectSection(S);
-        end;
       end;
 end;
 
 procedure TLinker.MakeExecutable;
 var
   I, J, K: Integer;
+  O: TLinkerObject;
 begin
   for I := 0 to FObjects.Count - 1 do
   begin
-    with TLinkerObject(FObjects[I]) do
+    O := TLinkerObject(FObjects[I]);
+    with O do
       for J := 0 to SectionCount - 1 do
         with Section[J] do
           for K := 0 to RelocationCount - 1 do
-            ResolveRelocation(Relocation[K]);
+            ResolveRelocation(O, Relocation[K]);
   end;
 end;
 
 procedure TLinker.Execute;
+type
+  TMainProc = procedure;
+var
+  Sym: TLinkerObjectSymbol;
+  Main: TMainProc;
+  O: TLinkerObject;
+  I: Integer;
 begin
-
+  O := TLinkerObject(FObjects[0]);
+  for I := 0 to O.SymbolCount - 1 do
+    WriteLn(O.Symbol[I].Name);
+  Sym := FindSymbol(EntryPoint);
+  if Sym = nil then
+    raise Exception.Create('Can''t find main procedure');
+  Main := TMainProc(Sym.Value + Sym.Section.FLinkerSectionData);
+  Main();
 end;
 
 { TLinkerMemoryManager }

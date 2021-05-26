@@ -3,10 +3,9 @@ program TheLinker;
 {$ASMMODE INTEL}
 
 uses
-  Windows,
   SysUtils,
   Linker,
-  COFF64;
+  DLLParser;
 
 var
   I, SecAlign: Integer;
@@ -21,14 +20,18 @@ begin
   with L do
   begin
     OutputFormat := lofPeX86_64;
-    EntryPoint := 'main';
+    EntryPoint := 'P$OFILE_$$_FAKEMAIN';
     AddInput('../tests/ofile/OFile.o');
     AddInput('../tests/pascal_common_object_files/system.o');
     AddInput('../tests/pascal_common_object_files/fpintres.o');
     AddInput('../tests/pascal_common_object_files/objpas.o');
     AddInput('../tests/pascal_common_object_files/sysinit.o');
+    begin //We must load dll here
+      AddDLL('C:\Windows\System32\kernel32.dll', '_$dll$kernel32$');
+      AddDLL('C:\Windows\System32\oleaut32.dll', '_$dll$oleaut32$');
+      AddDLL('C:\Windows\System32\user32.dll', '_$dll$user32$');
+    end;
     begin //Text Section
-      //We must load dll here
       //CurrentLocation:= SizeHeaders;
       CurrentLocation := Align(SecAlign);
       NewSection('.text');
@@ -219,6 +222,19 @@ begin
       begin
         O := &Object[I];
         Link(O.FileName, '.pdata');
+        for S in O.Find('.pdata.*') do
+          Link(O.FileName, S.Name);
+      end;
+    end;
+    begin //XData section
+      CurrentLocation := Align(SecAlign);
+      NewSection('.xdata');
+      for I := 0 to ObjectCount - 1 do
+      begin
+        O := &Object[I];
+        Link(O.FileName, '.xdata');
+        for S in O.Find('.xdata.*') do
+          Link(O.FileName, S.Name);
       end;
     end;
     begin //BSS section
@@ -324,7 +340,7 @@ begin
       begin
         O := &Object[I];
         //This must sort before write
-        for S in O.Find('.CRT$XL$*') do
+        for S in O.Find('.CRT$XL*') do
           Link(O.FileName, S.Name);
       end;
       ProvideSymbol('___crt_xl_end__', CurrentLocation);
@@ -383,6 +399,8 @@ begin
           Link(O.FileName, S.Name);
       end;
     end;
+    MakeExecutable;
+    Execute;
   end;
   WriteLn(GetTickCount64 - T);
   ReadLn;
