@@ -5,7 +5,7 @@ unit COFF64;
 interface
 
 uses
-  Classes, SysUtils, Contnrs,
+  Classes, SysUtils, Contnrs, Math,
   JwaWindows,
   Linker;
 
@@ -58,12 +58,15 @@ type
     FSymbol: TCOFF64Symbol;
     FVirtualAddress: QWord;
     FFlag: TCOFF64RelocationFlag;
+    FSection: TCOFF64Section;
   protected
     function GetSymbol: TLinkerObjectSymbol; override;
     function GetVirtualAddress: QWord; override;
     procedure SetVirtualAddress(AValue: QWord); override;
+    function GetSection: TLinkerObjectSection; override;
   public
     constructor Create(AOwner: TCOFF64Object);
+    property Flag: TCOFF64RelocationFlag read FFlag;
   end;
 
   { TCOFF64Section }
@@ -86,6 +89,11 @@ type
     function GetSymbolCount: QWord; override;
     function GetData: Pbyte; override;
     function GetSize: QWord; override;
+    function GetIsCode: Boolean; override;
+    function GetIsDicardable: Boolean; override;
+    function GetIsIntializedData: Boolean; override;
+    function GetIsUninitalizedData: Boolean; override;
+    function GetIsWritable: Boolean; override;
   public
     constructor Create(AOwner: TCOFF64Object);
     destructor Destroy; override;
@@ -101,6 +109,7 @@ type
     FSymbols: TObjectList;
     FStream: TStream;
     FImageFileHeader: TImageFileHeader;
+    FImageBase: QWord;
     procedure LoadFromFile;
     procedure AddSection(ASection: TCOFF64Section);
     procedure AddSymbol(ASymbol: TCOFF64Symbol);
@@ -111,6 +120,7 @@ type
     function GetSectionCount: QWord; override;
     function GetSymbol(Index: QWord): TLinkerObjectSymbol; override;
     function GetSymbolCount: QWord; override;
+    function GetImageBase: QWord; override;
   public
     constructor Create(APath: String);
     destructor Destroy; override;
@@ -134,6 +144,11 @@ end;
 procedure TCOFF64Relocation.SetVirtualAddress(AValue: QWord);
 begin
   FVirtualAddress := AValue;
+end;
+
+function TCOFF64Relocation.GetSection: TLinkerObjectSection;
+begin
+  Result := FSection;
 end;
 
 constructor TCOFF64Relocation.Create(AOwner: TCOFF64Object);
@@ -240,6 +255,31 @@ begin
   Result := FDataSize;
 end;
 
+function TCOFF64Section.GetIsCode: Boolean;
+begin
+  Result := sfCode in FFlags;
+end;
+
+function TCOFF64Section.GetIsDicardable: Boolean;
+begin
+  Result := sfDiscardable in FFlags;
+end;
+
+function TCOFF64Section.GetIsIntializedData: Boolean;
+begin
+  Result := sfInitializedData in FFlags;
+end;
+
+function TCOFF64Section.GetIsUninitalizedData: Boolean;
+begin
+  Result := sfUninitializedData in FFlags;
+end;
+
+function TCOFF64Section.GetIsWritable: Boolean;
+begin
+  Result := sfWritable in FFlags;
+end;
+
 constructor TCOFF64Section.Create(AOwner: TCOFF64Object);
 begin
   FOwner := AOwner;
@@ -318,6 +358,7 @@ begin
       Include(FFlags, sfWritable);
     if FInternalSection.PointerToRawData <> 0 then
     begin
+      FImageBase := min(FInternalSection.PointerToRawData, FImageBase);
       P := FStream.Position;
       FData := AllocMem(FDataSize);
       FStream.Position := FInternalSection.PointerToRawData;
@@ -376,6 +417,8 @@ begin
     FSymbol := Self.Symbol[FInternalRelocation.SymbolTableIndex] as TCOFF64Symbol;
     FVirtualAddress := FInternalRelocation.Union.VirtualAddress;
     FFlag := TCOFF64RelocationFlag(FInternalRelocation.Type_);
+    FSection := ASection;
+    ASection.FRelocations.Add(ARelocation);
   end;
 end;
 
@@ -407,11 +450,17 @@ begin
   Result := FSymbols.Count;
 end;
 
+function TCOFF64Object.GetImageBase: QWord;
+begin
+  Result := FImageBase;
+end;
+
 constructor TCOFF64Object.Create(APath: String);
 begin
   FPath := APath;
   FSections := TObjectList.Create(True);
   FSymbols := TObjectList.Create(True);
+  FImageBase := $FFFFFFFFFFFFFFFF;
   LoadFromFile;
 end;
 
