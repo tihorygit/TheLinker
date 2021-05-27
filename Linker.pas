@@ -650,6 +650,14 @@ var
   I, J: Integer;
 begin
   Result := nil;
+  for I := 0 to FSymbols.Count - 1 do
+  begin
+    if TLinkerObjectSymbol(FSymbols[I]).Name = AName then
+    begin
+      Result := TLinkerObjectSymbol(FSymbols[I]);
+      Exit;
+    end;
+  end;
   for I := 0 to FObjects.Count - 1 do
   begin
     with TLinkerObject(FObjects[I]) do
@@ -662,14 +670,6 @@ begin
           Exit;
         end;
       end;
-  end;
-  for I := 0 to FSymbols.Count - 1 do
-  begin
-    if TLinkerObjectSymbol(FSymbols[I]).Name = AName then
-    begin
-      Result := TLinkerObjectSymbol(FSymbols[I]);
-      Exit;
-    end;
   end;
 end;
 
@@ -698,7 +698,7 @@ begin
   Mem[10] := 255;
   Mem[11] := 224;
   FCurrentLocation += 12;
-  NewSymbol(AName, QWord(Mem));
+  FSymbols.Add(TLinkerSymbol.Create(AName, QWord(Mem)));
 end;
 
 procedure TLinker.ProvideSymbol(AName: String; AValue: QWord);

@@ -7,6 +7,32 @@ uses
   Linker,
   DLLParser;
 
+  procedure FakeWriteTextShortStr(Len: Longint; var f: Text; const s: ShortString);
+  begin
+    Write(S);
+  end;
+
+  procedure FakeWritelnEnd(var f: Text);
+  begin
+    WriteLn();
+  end;
+
+  procedure FakeIoCheck;
+  begin
+
+  end;
+
+
+  procedure FakeInitUnits;
+  begin
+    WriteLn('Init Units');
+  end;
+
+  procedure FakeDoExit;
+  begin
+    WriteLn('Do Exit');
+  end;
+
 var
   I, SecAlign: Integer;
   L: TLinker;
@@ -21,7 +47,7 @@ begin
   begin
     OutputFormat := lofPeX86_64;
     //EntryPoint := 'P$OFILE_$$_FAKEMAIN';
-    EntryPoint := 'main';
+    EntryPoint := 'PASCALMAIN';
     AddInput('../tests/ofile/OFile.o');
     AddInput('../tests/pascal_common_object_files/system.o');
     AddInput('../tests/pascal_common_object_files/fpintres.o');
@@ -31,6 +57,13 @@ begin
       AddDLL('C:\Windows\System32\kernel32.dll', '_$dll$kernel32$');
       AddDLL('C:\Windows\System32\oleaut32.dll', '_$dll$oleaut32$');
       AddDLL('C:\Windows\System32\user32.dll', '_$dll$user32$');
+    end;
+    begin //Add Fake calls
+      AddFakeCallSymbol('fpc_initializeunits', @FakeInitUnits);
+      AddFakeCallSymbol('fpc_do_exit', @FakeDoExit);
+      AddFakeCallSymbol('fpc_write_text_shortstr', @FakeWriteTextShortStr);
+      AddFakeCallSymbol('fpc_iocheck', @FakeIoCheck);
+      AddFakeCallSymbol('fpc_writeln_end', @FakeWritelnEnd);
     end;
     begin //Text Section
       //CurrentLocation:= SizeHeaders;
