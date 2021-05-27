@@ -3,6 +3,7 @@ program TheLinker;
 {$ASMMODE INTEL}
 
 uses
+  Windows,
   SysUtils,
   Linker,
   DLLParser;
@@ -28,7 +29,19 @@ uses
 
   procedure FakeDoExit; assembler; nostackframe;
   asm
-    ADD RSP, 48 //Fix pascal main return address
+           ADD     RSP, 48 //Fix pascal main return address
+  end;
+
+  function RestrictedCreateFileA: THandle;
+  begin
+    Writeln('CreateFileA is restricted');
+    Result := THandle(-1);
+  end;
+
+  function NeedPermissionMessageBoxA(hWnd: HWND; lpText: LPCSTR; lpCaption: LPCSTR; uType: UINT): Longint;
+  begin
+    if MessageBox(0, 'User request messagebox permision', 'Request Permission', MB_YESNO or MB_ICONWARNING) = IDYES then
+      Result := MessageBoxA(hWnd, lpText, lpCaption, uType);
   end;
 
 var
@@ -51,6 +64,10 @@ begin
     AddInput('../tests/pascal_common_object_files/fpintres.o');
     AddInput('../tests/pascal_common_object_files/objpas.o');
     AddInput('../tests/pascal_common_object_files/sysinit.o');
+    begin //Add restricted symbols
+      AddFakeCallSymbol('_$dll$kernel32$CreateFileA', @RestrictedCreateFileA);
+      AddFakeCallSymbol('_$dll$user32$MessageBoxA', @NeedPermissionMessageBoxA);
+    end;
     begin //We must load dll here
       AddDLL('C:\Windows\System32\kernel32.dll', '_$dll$kernel32$');
       AddDLL('C:\Windows\System32\oleaut32.dll', '_$dll$oleaut32$');

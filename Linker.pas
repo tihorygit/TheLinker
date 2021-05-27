@@ -235,6 +235,7 @@ type
     procedure WriteQWord(AValue: QWord);
 
     function FindSymbol(AName: String): TLinkerObjectSymbol;
+    function FindLinkerSymbol(AName: String): TLinkerObjectSymbol;
     procedure NewSymbol(AName: String; AValue: QWord);
     procedure AddSymbol(ASymbol: TLinkerObjectSymbol);
     procedure AddFakeCallSymbol(AName: String; AAddress: Pointer);
@@ -673,6 +674,21 @@ begin
   end;
 end;
 
+function TLinker.FindLinkerSymbol(AName: String): TLinkerObjectSymbol;
+var
+  I: Integer;
+begin
+  Result := nil;
+  for I := 0 to FSymbols.Count - 1 do
+  begin
+    if TLinkerObjectSymbol(FSymbols[I]).Name = AName then
+    begin
+      Result := TLinkerObjectSymbol(FSymbols[I]);
+      Exit;
+    end;
+  end;
+end;
+
 procedure TLinker.NewSymbol(AName: String; AValue: QWord);
 begin
   AddSymbol(TLinkerSymbol.Create(AName, AValue));
@@ -698,7 +714,8 @@ begin
   Mem[10] := 255;
   Mem[11] := 224;
   FCurrentLocation += 12;
-  FSymbols.Add(TLinkerSymbol.Create(AName, QWord(Mem)));
+  if FindLinkerSymbol(AName) = nil then
+    FSymbols.Add(TLinkerSymbol.Create(AName, QWord(Mem)));
 end;
 
 procedure TLinker.ProvideSymbol(AName: String; AValue: QWord);
