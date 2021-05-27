@@ -7,7 +7,7 @@ uses
   Linker,
   DLLParser;
 
-  procedure FakeWriteTextShortStr(Len: Longint; var f: Text; const s: ShortString);
+  procedure FakeWriteTextShortStr(Len: Longint; var f: Text; const s: Shortstring);
   begin
     Write(S);
   end;
@@ -19,18 +19,16 @@ uses
 
   procedure FakeIoCheck;
   begin
-
   end;
 
 
   procedure FakeInitUnits;
   begin
-    WriteLn('Init Units');
   end;
 
-  procedure FakeDoExit;
-  begin
-    WriteLn('Do Exit');
+  procedure FakeDoExit; assembler; nostackframe;
+  asm
+    ADD RSP, 48 //Fix pascal main return address
   end;
 
 var
@@ -46,8 +44,8 @@ begin
   with L do
   begin
     OutputFormat := lofPeX86_64;
-    EntryPoint := 'P$OFILE_$$_FAKEMAIN';
-    //EntryPoint := 'main';
+    //EntryPoint := 'P$OFILE_$$_FAKEMAIN';
+    EntryPoint := 'PASCALMAIN';
     AddInput('../tests/ofile/OFile.o');
     AddInput('../tests/pascal_common_object_files/system.o');
     AddInput('../tests/pascal_common_object_files/fpintres.o');
