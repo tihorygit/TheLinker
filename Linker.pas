@@ -263,7 +263,7 @@ uses COFF64, DLLParser;
 
 function TLinkerSymbol.GetIsAbsolute: Boolean;
 begin
-  Result := True;
+  Result := False;
 end;
 
 function TLinkerSymbol.GetIsDebug: Boolean;
@@ -351,7 +351,6 @@ end;
 procedure TLinkerSection.AddObjectSection(AObjectSection: TLinkerObjectSection);
 begin
   FObjectSections.Add(AObjectSection);
-  WriteLn(AObjectSection.Name, ' ', FOwner.CurrentLocation);
   AObjectSection.LinkerSectionData := Pointer(FOwner.CurrentLocation);
   AObjectSection.LinkerSection := Self;
   while AObjectSection.Size > QWord(FOwner.FMemoryManager.Mem) - FOwner.CurrentLocation + FOwner.FMemoryManager.Allocated do
@@ -504,8 +503,7 @@ begin
     Sym := FindSymbol(Sym.Name);
   if Sym = nil then
   begin
-    WriteLn(R.Symbol.Name);
-    //raise Exception.Create('Undifined symbol : ' + R.Symbol.Name);
+    raise Exception.Create('Undifined symbol : ' + R.Symbol.Name);
     Exit;
   end;
   if Sym.IsAbsolute then
@@ -514,8 +512,6 @@ begin
     Exit; //Not supported yet
 
   RelAddr := QWord(R.Section.LinkerSectionData) + R.VirtualAddress;
-  WriteLn(QWord(R.Section.LinkerSectionData));
-  Writeln(R.Section.Name);
   if Sym.Section <> nil then
     SymAddr := Sym.Value + QWord(Sym.Section.LinkerSectionData)
   else
@@ -524,13 +520,13 @@ begin
   case R.Flag of
     rfAbsolute: ;
     rfAddr64: PQWord(RelAddr)^ := QWord(SymAddr);
-    rfAddr32NB: PQWord(RelAddr)^ := QWord(SymAddr - AObject.ImageBase - QWord(FMemoryManager.Mem));
-    rfRel32: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 4);
-    rfRel32_1: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 5);
-    rfRel32_2: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 6);
-    rfRel32_3: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 7);
-    rfRel32_4: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 8);
-    rfRel32_5: PQWord(RelAddr)^ := QWord(SymAddr - RelAddr - 9);
+    rfAddr32NB: PDWORD(RelAddr)^ := DWORD(SymAddr - AObject.ImageBase - QWord(FMemoryManager.Mem));
+    rfRel32: PDWORD(RelAddr)^ := DWORD(SymAddr - RelAddr - 4);
+    rfRel32_1: PDWORD(RelAddr)^ := DWORD(SymAddr - RelAddr - 5);
+    rfRel32_2: PDWORD(RelAddr)^ := DWORD(SymAddr - RelAddr - 6);
+    rfRel32_3: PDWORD(RelAddr)^ := DWORD(SymAddr - RelAddr - 7);
+    rfRel32_4: PDWORD(RelAddr)^ := DWORD(SymAddr - RelAddr - 8);
+    rfRel32_5: PDWORD(RelAddr)^ := DWORD(SymAddr - RelAddr - 9);
     else
       raise Exception.Create('Not supported relocation');
   end;
@@ -756,12 +752,7 @@ type
 var
   Sym: TLinkerObjectSymbol;
   Main: TMainProc;
-  O: TLinkerObject;
-  I: Integer;
 begin
-  O := TLinkerObject(FObjects[0]);
-  for I := 0 to O.SymbolCount - 1 do
-    WriteLn(O.Symbol[I].Name);
   Sym := FindSymbol(EntryPoint);
   if Sym = nil then
     raise Exception.Create('Can''t find main procedure');

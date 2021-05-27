@@ -20,7 +20,8 @@ begin
   with L do
   begin
     OutputFormat := lofPeX86_64;
-    EntryPoint := 'P$OFILE_$$_FAKEMAIN';
+    //EntryPoint := 'P$OFILE_$$_FAKEMAIN';
+    EntryPoint := 'main';
     AddInput('../tests/ofile/OFile.o');
     AddInput('../tests/pascal_common_object_files/system.o');
     AddInput('../tests/pascal_common_object_files/fpintres.o');
